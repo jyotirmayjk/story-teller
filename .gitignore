@@ -1,0 +1,33 @@
+# General
+.DS_Store
+.env
+*.db
+*.log
+
+# Backend
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+
+# Mobile
+mobile/node_modules/
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/.expo/
+
+# Web
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+
+# Browser backend
+browserbackend/.venv/
+browserbackend/__pycache__/
+
+# Firmware
+firmware/.pio/
+firmware/.vscode/
