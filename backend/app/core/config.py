@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     SARVAM_LLM_TEMPERATURE: float = 0.2
     SARVAM_LLM_MAX_TOKENS: int = 180
     SARVAM_LLM_REASONING_EFFORT: str = ""
+    RUNTIME_TRACE_JSONL: str = "runtime_logs/voice_turns.jsonl"
 
     model_config = {
         "extra": "ignore",

@@ -13,6 +13,7 @@ export function useLiveSocket(enabled = true) {
   const setTranscriptFinal = useLiveStore((state) => state.setTranscriptFinal);
   const appendAssistantText = useLiveStore((state) => state.appendAssistantText);
   const setAssistantText = useLiveStore((state) => state.setAssistantText);
+  const archiveCompletedTurn = useLiveStore((state) => state.archiveCompletedTurn);
   const prependDiscovery = useLiveStore((state) => state.prependDiscovery);
   const resetTurn = useLiveStore((state) => state.resetTurn);
   const setSessionFromRecord = useSessionStore((state) => state.setSessionFromRecord);
@@ -24,6 +25,7 @@ export function useLiveSocket(enabled = true) {
     setTranscriptFinal,
     appendAssistantText,
     setAssistantText,
+    archiveCompletedTurn,
     prependDiscovery,
     setSessionFromRecord,
     updateRuntime,
@@ -38,6 +40,7 @@ export function useLiveSocket(enabled = true) {
     setTranscriptFinal,
     appendAssistantText,
     setAssistantText,
+    archiveCompletedTurn,
     prependDiscovery,
     setSessionFromRecord,
     updateRuntime,
@@ -81,6 +84,7 @@ export function useLiveSocket(enabled = true) {
           break;
         case 'tts.completed':
           await handlers.flush(message.data.codec || 'mp3');
+          handlers.archiveCompletedTurn();
           handlers.updateRuntime({ status: 'active' });
           break;
         case 'discovery.created':

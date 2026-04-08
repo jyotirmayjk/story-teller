@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useMicrophone } from './useMicrophone';
 
 export function usePushToTalk(args: {
+  onBegin?: () => void;
   onChunk: (audio: string, sampleRate: number) => void;
   onStop: () => void;
 }) {
@@ -10,6 +11,7 @@ export function usePushToTalk(args: {
 
   const begin = useCallback(async () => {
     setBusy(true);
+    args.onBegin?.();
     await microphone.start((audio) => args.onChunk(audio, microphone.sampleRate));
   }, [args, microphone]);
 

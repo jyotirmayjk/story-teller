@@ -30,8 +30,12 @@ export function ChildLiveScreen({ mode }: { mode: Mode }) {
   const liveSocket = useLiveSocket(bootstrapped);
   const session = useSession();
   const live = useLiveStore();
+  const resetTurn = useLiveStore((state) => state.resetTurn);
 
   const pushToTalk = usePushToTalk({
+    onBegin: () => {
+      resetTurn();
+    },
     onChunk: (audio, sampleRate) => {
       const ok =
         liveSocket?.send({
@@ -80,6 +84,10 @@ export function ChildLiveScreen({ mode }: { mode: Mode }) {
   const screenCopy = copyByMode[mode];
   const pttState = getPushToTalkState(session.status, pushToTalk.recording);
   const detectedObject = mode === 'story_teller' ? session.currentObjectName : '';
+  const previousTurn =
+    mode === 'conversation' && live.recentTurns.length > 0
+      ? live.recentTurns[live.recentTurns.length - 1]
+      : undefined;
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-paper">
@@ -93,6 +101,7 @@ export function ChildLiveScreen({ mode }: { mode: Mode }) {
         <ConversationDisplay
           transcript={live.transcriptPartial || live.transcriptFinal}
           assistantReply={live.assistantText}
+          previousTurn={previousTurn}
         />
 
         <ResponsePanel

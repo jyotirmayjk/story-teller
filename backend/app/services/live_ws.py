@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
+import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,6 +20,7 @@ from app.services.prompt_builders import (
     build_conversational_companion_prompt,
     build_story_teller_prompt,
 )
+from app.services.runtime_trace import runtime_trace_service
 from app.services.sarvam_llm import sarvam_llm_service
 from app.services.sarvam_streaming import sarvam_streaming_service
 
@@ -35,6 +38,20 @@ class SessionUpdatePayload:
     voice_style: Optional[str] = None
     current_object_name: Optional[str] = None
     current_object_category: Optional[str] = None
+
+
+@dataclass
+class ConversationTurn:
+    child_text: str
+    assistant_text: str
+
+
+STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "big", "but", "do", "for", "go", "i", "in", "is", "it",
+    "like", "me", "my", "of", "on", "saw", "see", "so", "that", "the", "there", "they", "this", "to",
+    "today", "was", "we", "went", "what", "with", "you",
+}
+GENERIC_FALLBACK_REPLY = "Hello. I am here with you."
 
 
 class LiveWebSocketSession:
@@ -57,6 +74,11 @@ class LiveWebSocketSession:
         self.last_transcript: str = ""
         self.last_language_code: Optional[str] = None
         self.pending_audio_chunks: List[bytes] = []
+        self.turn_open = False
+        self.conversation_history: List[ConversationTurn] = []
+        self.conversation_thread_id: Optional[str] = None
+        self.conversation_turn_count = 0
+        self.conversation_topic_anchor: Optional[str] = None
 
     def _serialize_session(self) -> dict:
         return {
@@ -139,6 +161,9 @@ class LiveWebSocketSession:
     async def handle_audio_chunk(self, payload: AudioChunkPayload) -> None:
         if not await self.ensure_stt():
             return
+        if not self.turn_open:
+            self._reset_turn_buffers()
+            self.turn_open = True
         if payload.encoding == "pcm_s16le":
             self.pending_audio_chunks.append(base64.b64decode(payload.audio))
             return
@@ -167,6 +192,7 @@ class LiveWebSocketSession:
         transcript = await self._await_final_transcript()
         if not transcript:
             transcript = self.last_transcript or ""
+        self.turn_open = False
 
         self.session.status = SessionStatus.active
         self.session.last_activity_at = datetime.utcnow()
@@ -178,12 +204,26 @@ class LiveWebSocketSession:
             "data": {"text": transcript, "language_code": self.last_language_code},
         })
 
+        is_conversation_mode = self.session.active_mode == AppMode.conversation
+        if is_conversation_mode and self._should_start_new_conversation_thread(transcript):
+            self._reset_conversation_thread()
+
         system_prompt = (
             build_story_teller_prompt(self.session)
             if self.session.active_mode == AppMode.story_teller
-            else build_conversational_companion_prompt(self.session)
+            else build_conversational_companion_prompt(
+                self.session,
+                recent_turns=[
+                    {"child_text": turn.child_text, "assistant_text": turn.assistant_text}
+                    for turn in self.conversation_history
+                ],
+                thread_turn_count=self.conversation_turn_count,
+                topic_anchor=self.conversation_topic_anchor,
+            )
         )
-        user_message = transcript or "The child made a sound but no clear words were transcribed. Reply gently and briefly."
+        user_message = self._build_conversation_user_message(transcript) if is_conversation_mode else transcript
+        if not user_message:
+            user_message = "The child made a sound but no clear words were transcribed. Reply gently and briefly."
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
@@ -193,8 +233,17 @@ class LiveWebSocketSession:
         async for delta in sarvam_llm_service.stream_completion(messages=messages):
             reply_parts.append(delta)
             await self.websocket.send_json({"type": "llm.delta", "data": {"text": delta}})
-        reply_text = "".join(reply_parts).strip() or "Hello. I am here with you."
+        reply_text = "".join(reply_parts).strip()
+        if not reply_text:
+            reply_text = (
+                self._build_conversation_fallback_reply(transcript)
+                if is_conversation_mode
+                else GENERIC_FALLBACK_REPLY
+            )
         await self.websocket.send_json({"type": "llm.completed", "data": {"text": reply_text}})
+
+        if is_conversation_mode:
+            self._record_conversation_turn(transcript, reply_text)
 
         speaker = "roopa" if self.session.voice_style and str(self.session.voice_style) == "story_narrator" else "shruti"
         target_language_code = settings.SARVAM_TTS_LANGUAGE
@@ -220,6 +269,31 @@ class LiveWebSocketSession:
                     })
                 await self.websocket.send_json({"type": "tts.completed", "data": {"codec": event.get("codec", tts_codec)}})
 
+        runtime_trace_service.append_turn(
+            {
+                "session_id": self.session.id,
+                "mode": self.session.active_mode.value if self.session.active_mode else "conversation",
+                "stt": {
+                    "transcript": transcript,
+                    "language_code": self.last_language_code,
+                    "model": settings.SARVAM_STT_MODEL,
+                    "mode": settings.SARVAM_STT_MODE,
+                },
+                "llm": {
+                    "reply_text": reply_text,
+                    "model": settings.SARVAM_CHAT_MODEL,
+                },
+                "tts": {
+                    "text": reply_text,
+                    "model": settings.SARVAM_TTS_MODEL,
+                    "speaker": speaker,
+                    "target_language_code": target_language_code,
+                    "codec": tts_codec,
+                    "audio_bytes": sum(len(chunk) for chunk in tts_audio_parts),
+                },
+            }
+        )
+
         persisted = PersistenceService.create_turn_discovery(
             db=self.db,
             session=self.session,
@@ -244,6 +318,103 @@ class LiveWebSocketSession:
                 "created_at": persisted.created_at.isoformat() if persisted.created_at else None,
             },
         })
+
+    def _record_conversation_turn(self, transcript: str, reply_text: str) -> None:
+        if not transcript.strip() or not reply_text.strip():
+            return
+        if reply_text.strip() == GENERIC_FALLBACK_REPLY:
+            return
+        if not self.conversation_thread_id:
+            self.conversation_thread_id = str(uuid.uuid4())
+
+        self.conversation_history.append(
+            ConversationTurn(
+                child_text=transcript.strip(),
+                assistant_text=reply_text.strip(),
+            )
+        )
+        self.conversation_history = self.conversation_history[-3:]
+        self.conversation_turn_count = min(self.conversation_turn_count + 1, 3)
+        if not self.conversation_topic_anchor:
+            self.conversation_topic_anchor = self._extract_topic_anchor(transcript)
+
+    def _reset_conversation_thread(self) -> None:
+        self.conversation_thread_id = str(uuid.uuid4())
+        self.conversation_turn_count = 0
+        self.conversation_history = []
+        self.conversation_topic_anchor = None
+
+    def _reset_turn_buffers(self) -> None:
+        self.last_transcript = ""
+        self.last_language_code = None
+        self.pending_audio_chunks = []
+        while True:
+            try:
+                self.stt_events.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+    def _tokenize_topic_words(self, text: str) -> set[str]:
+        words = re.findall(r"[a-zA-Z']+", text.lower())
+        return {word for word in words if len(word) > 2 and word not in STOPWORDS}
+
+    def _build_conversation_fallback_reply(self, transcript: str) -> str:
+        clean = transcript.strip()
+        if not clean:
+            return "I am listening. What would you like to tell me about?"
+
+        topic_words = list(self._tokenize_topic_words(clean))
+        if topic_words:
+            subject = topic_words[0]
+            return f"You noticed {subject}. What else did you see about it?"
+        return "I heard you. Can you tell me a little more?"
+
+    def _extract_topic_anchor(self, transcript: str) -> Optional[str]:
+        topic_words = list(self._tokenize_topic_words(transcript))
+        if topic_words:
+            return topic_words[0]
+        return None
+
+    def _is_short_followup(self, transcript: str) -> bool:
+        words = re.findall(r"[a-zA-Z']+", transcript.strip())
+        return 0 < len(words) <= 2
+
+    def _build_conversation_user_message(self, transcript: str) -> str:
+        clean = transcript.strip()
+        if not clean:
+            return ""
+        if not self.conversation_history or not self._is_short_followup(clean):
+            return clean
+
+        last_turn = self.conversation_history[-1]
+        anchor = self.conversation_topic_anchor or self._extract_topic_anchor(last_turn.child_text) or "the same subject"
+        return (
+            f"Current conversation subject: {anchor}\n"
+            f"Previous assistant question: {last_turn.assistant_text}\n"
+            f"Child's short answer: {clean}\n"
+            "Treat this as a continuation of the same conversation and ask one grounded next question."
+        )
+
+    def _should_start_new_conversation_thread(self, transcript: str) -> bool:
+        if not transcript.strip():
+            return False
+        if self.conversation_turn_count >= 3:
+            return True
+        if not self.conversation_history:
+            return True
+
+        new_words = self._tokenize_topic_words(transcript)
+        if len(new_words) <= 1:
+            return False
+
+        previous_words: set[str] = set()
+        for turn in self.conversation_history[-2:]:
+            previous_words.update(self._tokenize_topic_words(turn.child_text))
+
+        if not previous_words:
+            return False
+
+        return new_words.isdisjoint(previous_words)
 
     async def _drain_stt_events(self, *, partial_only: bool) -> None:
         while True:

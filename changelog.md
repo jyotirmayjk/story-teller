@@ -1,5 +1,120 @@
 # Changelog
 
+## Standalone repo follow-up fixes
+
+### Multi-turn Conversation memory
+
+Files:
+- `backend/app/services/live_ws.py`
+- `backend/app/services/prompt_builders.py`
+- `web/src/store/liveStore.ts`
+- `web/src/hooks/useLiveSocket.ts`
+- `web/src/components/child-facing/ConversationDisplay.tsx`
+- `web/src/screens/live/ChildLiveScreen.tsx`
+
+Changes:
+- Added a short conversation memory window for `conversation` mode in the backend runtime.
+- Passed the last 1-2 child/assistant turns into the conversation prompt.
+- Added a 3-turn topic cap so conversation threads stay short and child-friendly.
+- Displayed one previous turn in the `Conversation` UI so continuity is visible to the user.
+
+Problems addressed:
+- Conversation mode previously behaved like one isolated prompt per turn.
+- The assistant could not meaningfully continue a 2-3 turn exchange because it had no short-term context.
+
+Example issue:
+- Child: `I saw a dog.`
+- Assistant: `A dog. What color was the dog?`
+- Child: `Brown.`
+- Before this change, the next response could behave like a fresh conversation instead of a continuation.
+
+### STT turn-reset fix
+
+Files:
+- `backend/app/services/live_ws.py`
+- `web/src/hooks/usePushToTalk.ts`
+- `web/src/screens/live/ChildLiveScreen.tsx`
+
+Changes:
+- Reset backend turn-local transcript buffers and queued STT events when a new utterance begins.
+- Cleared the current visible turn in the frontend when push-to-talk begins.
+
+Problems addressed:
+- The second turn of STT could reuse stale transcript state from the previous turn.
+- This made later turns feel random or contaminated by earlier speech.
+
+Example issue:
+- First turn: `I saw a bus today.`
+- Second turn could unexpectedly reuse or blend earlier detected speech if the new utterance was weak.
+
+### Conversation fallback cleanup
+
+Files:
+- `backend/app/services/live_ws.py`
+- `web/src/store/liveStore.ts`
+
+Changes:
+- Replaced the generic fallback `Hello. I am here with you.` for `conversation` mode with a more grounded fallback question.
+- Prevented that generic fallback from being stored as a meaningful prior conversation turn in the UI/history.
+
+Problems addressed:
+- A non-specific fallback reply was polluting the conversation memory and making previous-turn context misleading.
+
+Example issue:
+- Previous turn panel showed:
+  - Child: `I saw a bus today.`
+  - Assistant: `Hello. I am here with you.`
+- That created a bad context window for the next turn.
+
+### Short-answer topic anchoring
+
+Files:
+- `backend/app/services/live_ws.py`
+- `backend/app/services/prompt_builders.py`
+
+Changes:
+- Added a lightweight in-memory topic anchor for each short conversation thread.
+- Strengthened the prompt so 1-2 word answers are treated as answers to the previous question, not new scenes.
+- For short follow-ups, changed the user message sent to the LLM to include:
+  - current subject
+  - previous assistant question
+  - latest short child answer
+
+Problems addressed:
+- Very short STT outputs were being taken too literally and could derail an otherwise coherent thread.
+
+Example issues from runtime logs:
+- `I saw a dog.` -> assistant: `You saw a dog. What did the dog do?`
+- child follow-up transcribed as `Heating.` -> assistant replied: `What was the dog heating?`
+- `Running in the garden.` -> assistant: `Did it see any flowers?`
+- child follow-up: `White flower.` -> assistant replied: `You see a white flower. Can you show me the white flower?`
+
+These examples showed that prior turns were being passed correctly, but short fragments still needed stronger subject anchoring.
+
+### JSONL runtime trace
+
+Files:
+- `backend/app/core/config.py`
+- `backend/app/services/runtime_trace.py`
+- `backend/app/services/live_ws.py`
+
+Changes:
+- Added a runtime JSONL log that appends one record per completed voice turn.
+- Each record captures:
+  - STT transcript and language code
+  - final LLM reply text
+  - TTS text and metadata
+
+Output file:
+- `backend/runtime_logs/voice_turns.jsonl`
+
+Problems addressed:
+- There was no persistent turn-by-turn trace to inspect STT, LLM, and TTS behavior together.
+- Debugging conversation continuity required manually inferring behavior from the UI.
+
+Example use:
+- Comparing consecutive entries showed that prompt continuity was working while STT on very short utterances remained the weak link.
+
 ## Summary
 
 This document captures the browser live-runtime work completed during the Sarvam voice debugging session. The scope covered a new dedicated `browserbackend` service based on the working Sarvam temp backend, frontend websocket stability, browser playback fixes, and a long debugging pass across STT, LLM, and TTS behavior.
