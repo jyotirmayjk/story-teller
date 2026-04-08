@@ -23,3 +23,4 @@ web/dist/
 web/*.tsbuildinfo
 web/.env.local
 web/.env.*.local
+web/MANUAL_TEST_PLAN.md
