@@ -46,6 +46,7 @@ def build_conversational_companion_prompt(
     recent_turns: Sequence[dict[str, str]] = (),
     thread_turn_count: int = 0,
     topic_anchor: Optional[str] = None,
+    should_ask_question: bool = True,
 ) -> str:
     context = []
     if session.current_object_name:
@@ -58,6 +59,10 @@ def build_conversational_companion_prompt(
     history_block = _format_recent_turns(recent_turns)
     if history_block:
         context.append(history_block)
+    if should_ask_question:
+        context.append("For this turn, you may ask one simple follow-up question if it helps the child continue.")
+    else:
+        context.append("For this turn, do not ask a question. Give a warm reflective response only.")
 
     context_block = " ".join(context)
 
@@ -68,10 +73,13 @@ def build_conversational_companion_prompt(
         "When the child's reply is only one or two words, treat it as an answer to the previous question rather than a brand-new topic. "
         "Keep the same subject from the active thread unless the child clearly introduces a different subject. "
         "Do not turn a short fragment into a brand-new scene or switch perspective unexpectedly. "
-        "Reflect exactly one concrete cue from the child's speech, then ask exactly one simple follow-up question. "
+        "Always begin by reflecting one concrete cue from the child's speech. "
+        "A follow-up question is optional, not required. "
+        "Only ask one simple question when it genuinely helps continue the child's thought. "
+        "Many good replies should end with a warm reflection and no question. "
         "Keep the conversation to at most 3 assistant turns on the same topic before gently opening space for a new topic. "
         "If the child says something clearly new, follow the new topic instead of forcing the old one. "
-        "If the child gives a very short answer, keep the next question simple and closely related. "
+        "If the child gives a very short answer, keep the next response simple and closely related. "
         "Avoid multiple questions, noisy praise, exclamation-heavy language, over-talking, and quiz-like prompts. "
         "Stay grounded in the child's real observation unless they clearly invite imagination. "
         f"{context_block}".strip()

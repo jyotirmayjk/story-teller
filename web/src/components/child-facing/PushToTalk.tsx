@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { RuntimeStatus } from '../../types/live';
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking';
@@ -40,17 +42,61 @@ export function PushToTalk({
   onCancel,
   onResetAudio,
 }: PushToTalkProps) {
+  const [activePointerId, setActivePointerId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (activePointerId === null) {
+      return;
+    }
+
+    const finish = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) {
+        return;
+      }
+      setActivePointerId(null);
+      onRelease();
+    };
+
+    const cancel = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) {
+        return;
+      }
+      setActivePointerId(null);
+      onCancel();
+    };
+
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', cancel);
+
+    return () => {
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+    };
+  }, [activePointerId, onCancel, onRelease]);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (disabled || activePointerId !== null) {
+      return;
+    }
+    event.preventDefault();
+    setActivePointerId(event.pointerId);
+    onPress();
+  };
+
   return (
     <section className="flex flex-col items-center gap-4 pt-4">
       <button
         type="button"
-        onMouseDown={onPress}
-        onMouseUp={onRelease}
-        onMouseLeave={onCancel}
-        onTouchStart={onPress}
-        onTouchEnd={onRelease}
+        onPointerDown={handlePointerDown}
+        onPointerLeave={(event) => {
+          if (activePointerId !== null && event.buttons === 0 && event.pointerType !== 'touch') {
+            setActivePointerId(null);
+            onCancel();
+          }
+        }}
         disabled={disabled}
         aria-label={stateLabels[state]}
+        style={{ touchAction: 'none' }}
         className={[
           'flex aspect-square w-[min(48vw,12rem)] items-center justify-center rounded-full p-3 shadow-button transition duration-300 ease-out sm:w-[min(72vw,18rem)] sm:p-4',
           'disabled:cursor-not-allowed disabled:opacity-80',

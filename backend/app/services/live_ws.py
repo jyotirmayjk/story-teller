@@ -219,6 +219,7 @@ class LiveWebSocketSession:
                 ],
                 thread_turn_count=self.conversation_turn_count,
                 topic_anchor=self.conversation_topic_anchor,
+                should_ask_question=self._should_ask_follow_up_question(transcript),
             )
         )
         user_message = self._build_conversation_user_message(transcript) if is_conversation_mode else transcript
@@ -374,6 +375,18 @@ class LiveWebSocketSession:
         if topic_words:
             return topic_words[0]
         return None
+
+    def _should_ask_follow_up_question(self, transcript: str) -> bool:
+        clean = transcript.strip()
+        if not clean:
+            return False
+        if not self.conversation_history:
+            return True
+        if self.conversation_turn_count >= 2:
+            return False
+        if self._is_short_followup(clean):
+            return False
+        return True
 
     def _is_short_followup(self, transcript: str) -> bool:
         words = re.findall(r"[a-zA-Z']+", transcript.strip())

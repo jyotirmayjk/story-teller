@@ -2,6 +2,71 @@
 
 ## Standalone repo follow-up fixes
 
+### Softer Conversation behavior
+
+Files:
+- `backend/app/services/prompt_builders.py`
+- `backend/app/services/live_ws.py`
+
+Changes:
+- Relaxed the `Conversation` prompt so a follow-up question is optional instead of mandatory.
+- Added a small backend policy to decide when a turn should ask a question and when it should end with reflection only.
+- Reduced question frequency for short follow-ups and later turns in the same thread.
+
+Problems addressed:
+- `Conversation` mode felt like a constant quiz.
+- Even when the child had already answered, the assistant kept pushing with another question.
+
+Example issue:
+- Child: `I saw a dog.`
+- Assistant: `What did the dog do?`
+- Child: `Running.`
+- Before this change, the assistant would often ask yet another question immediately instead of sometimes just reflecting the answer warmly.
+
+### Push-to-talk interaction fixes
+
+Files:
+- `web/src/components/child-facing/PushToTalk.tsx`
+- `web/src/hooks/usePushToTalk.ts`
+
+Changes:
+- Reworked the talk button to use unified pointer events instead of separate mouse/touch handlers.
+- Added pointer lifecycle handling so press starts recording and release ends it using one consistent gesture path.
+- Added begin/end guards so duplicate start/stop calls do not create accidental extra recordings.
+
+Problems addressed:
+- In Chrome mobile emulation, the button could start recording on press but fail to stop on release.
+- Releasing elsewhere could trigger a second unintended interaction.
+
+Example issue:
+- User had to tap randomly outside the button to get recording to stop, and that sometimes started another recording instead.
+
+### Runtime observations from latest JSONL traces
+
+Files:
+- `backend/runtime_logs/voice_turns.jsonl`
+
+What was tested:
+- Multi-turn `Conversation` with short answers such as:
+  - `I saw a dog.`
+  - `running`
+  - `Very, very fast.`
+- `Story Teller` prompts such as:
+  - `Hey, tell me the lion's story.`
+  - `Tell me the story of the Bunnies.`
+  - `Tell me the bunny's story.`
+
+Observed results:
+- The short-answer topic anchoring improved continuity for fragments like `running`.
+- `Conversation` still needed softer behavior because the assistant kept asking too many follow-up questions.
+- `Story Teller` mostly produced good output, but one tested case still failed:
+  - STT: `Tell me the bunny's story.`
+  - LLM: `I would be so happy to tell you the bunny's story! Could you please share the transcript with me so I can find the right words?`
+
+Why this matters:
+- The JSONL trace made it clear which issues were implementation bugs and which were prompt-behavior bugs.
+- It also showed that some `Story Teller` failures are prompt quality issues rather than transport or TTS issues.
+
 ### Multi-turn Conversation memory
 
 Files:

@@ -10,12 +10,19 @@ export function usePushToTalk(args: {
   const [busy, setBusy] = useState(false);
 
   const begin = useCallback(async () => {
+    if (microphone.recording) {
+      return;
+    }
     setBusy(true);
     args.onBegin?.();
     await microphone.start((audio) => args.onChunk(audio, microphone.sampleRate));
   }, [args, microphone]);
 
   const end = useCallback(async () => {
+    if (!microphone.recording) {
+      setBusy(false);
+      return;
+    }
     await microphone.stop();
     args.onStop();
     setBusy(false);
