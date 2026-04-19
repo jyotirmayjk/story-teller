@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+websockets
+sqlalchemy
+pydantic
+python-dotenv
+python-multipart
+pydantic-settings
+httpx
+sarvamai>=0.1.15

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Story Companion Duck",
+  "version": "0.1.0",
+  "description": "A floating duck avatar that listens, talks, and connects to the local Story Companion backend.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1:8020/*",
+    "ws://127.0.0.1:8020/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "css": ["src/avatar.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/duck-avatar-sprite.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "action": {
+    "default_title": "Story Companion Duck"
+  }
+}
