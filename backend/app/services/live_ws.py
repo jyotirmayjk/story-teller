@@ -52,6 +52,7 @@ STOPWORDS = {
     "today", "was", "we", "went", "what", "with", "you",
 }
 GENERIC_FALLBACK_REPLY = "Hello. I am here with you."
+DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 
 
 class LiveWebSocketSession:
@@ -220,6 +221,7 @@ class LiveWebSocketSession:
                 thread_turn_count=self.conversation_turn_count,
                 topic_anchor=self.conversation_topic_anchor,
                 should_ask_question=self._should_ask_follow_up_question(transcript),
+                child_language_code=self.last_language_code,
             )
         )
         user_message = self._build_conversation_user_message(transcript) if is_conversation_mode else transcript
@@ -239,7 +241,15 @@ class LiveWebSocketSession:
             reply_text = (
                 self._build_conversation_fallback_reply(transcript)
                 if is_conversation_mode
-                else GENERIC_FALLBACK_REPLY
+                else self._build_story_teller_fallback_reply(transcript)
+            )
+        elif self.session.active_mode == AppMode.story_teller and self._asks_for_transcript(reply_text):
+            reply_text = self._build_story_teller_fallback_reply(transcript)
+        if self._should_force_marathi_fallback(reply_text):
+            reply_text = (
+                self._build_conversation_marathi_fallback_reply(transcript)
+                if is_conversation_mode
+                else self._build_story_teller_fallback_reply(transcript)
             )
         await self.websocket.send_json({"type": "llm.completed", "data": {"text": reply_text}})
 
@@ -369,6 +379,47 @@ class LiveWebSocketSession:
             subject = topic_words[0]
             return f"You noticed {subject}. What else did you see about it?"
         return "I heard you. Can you tell me a little more?"
+
+    def _build_conversation_marathi_fallback_reply(self, transcript: str) -> str:
+        clean = transcript.strip()
+        if not clean:
+            return "मी ऐकते आहे. मला अजून सांग ना."
+
+        if self._is_short_followup(clean):
+            return f"{clean} दिसलं तुला. मग काय झालं?"
+        return f"तू म्हणालास, {clean} त्याबद्दल मला अजून सांग ना."
+
+    def _build_story_teller_fallback_reply(self, transcript: str) -> str:
+        clean = transcript.strip()
+        lower = clean.lower()
+        if not clean:
+            return "I am listening. Tell me about an animal or object, and I will tell a little story."
+
+        if self.last_language_code == "mr-IN":
+            if "अजून" in clean:
+                return "ही अजून एक छोटी गोष्ट आहे. एक गोड प्राणी हळूच चालत गेला, त्याला एक चमकदार खेळणे सापडले, आणि तो आनंदाने घरी परतला."
+            return "ही एक छोटी, गोड गोष्ट आहे. एक मैत्रीपूर्ण छोटा मित्र सकाळी बाहेर गेला, त्याला काहीतरी छान सापडलं, आणि तो आनंदाने खेळत राहिला."
+
+        if "another" in lower or "more" in lower:
+            return "Here is another little story. A cheerful little friend found something bright and special, played with it happily, and then went home smiling."
+        return "Here is a little story. A gentle little friend found something special, explored it with care, and ended the day feeling happy and safe."
+
+    def _asks_for_transcript(self, reply_text: str) -> bool:
+        lower = reply_text.lower()
+        return (
+            "share the transcript" in lower
+            or "provide the transcript" in lower
+            or "repeat the transcript" in lower
+            or "clarify the transcript" in lower
+            or "transcript" in lower
+        )
+
+    def _should_force_marathi_fallback(self, reply_text: str) -> bool:
+        if self.last_language_code != "mr-IN":
+            return False
+        if not reply_text.strip():
+            return False
+        return DEVANAGARI_RE.search(reply_text) is None
 
     def _extract_topic_anchor(self, transcript: str) -> Optional[str]:
         topic_words = list(self._tokenize_topic_words(transcript))

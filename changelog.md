@@ -1,5 +1,84 @@
 # Changelog
 
+## Session 2026-04-19
+
+### Work completed
+- Clarified the difference between the historical `v2` worktree and the cleaned standalone `story-conversational-companion` repo.
+- Created an isolated `avatar-version` subfolder for testing avatar UI changes without modifying the normal app.
+- Integrated a Piskel duck sprite sheet into the avatar-version React UI as a canvas-based animated assistant avatar.
+- Established separate server conventions for normal and avatar-version development.
+
+### Issues detected
+- The avatar-version frontend initially failed onboarding because the copied backend CORS settings only allowed frontend port `5173`.
+- The avatar-version copy needed its own frontend environment values because it runs on a separate backend port.
+
+### Files referenced
+- `avatar-version/web/src/components/avatar/SpriteAvatar.tsx`
+- `avatar-version/web/src/screens/live/ChildLiveScreen.tsx`
+- `avatar-version/web/src/assets/avatar/duck-avatar-sprite.png`
+- `avatar-version/web/.env.local`
+- `avatar-version/backend/app/main.py`
+- `avatar-requirements.md`
+
+### Changes implemented
+- Copied the current standalone project into `avatar-version` while excluding generated or local-heavy artifacts such as `.git`, `node_modules`, `.venv`, `dist`, and runtime logs.
+- Added the duck sprite sheet at `avatar-version/web/src/assets/avatar/duck-avatar-sprite.png`.
+- Added a canvas sprite renderer at `avatar-version/web/src/components/avatar/SpriteAvatar.tsx`.
+- Mapped app voice states to sprite frames:
+  - `idle`: frames `0-3`
+  - `listening`: frames `4-7`
+  - `processing`: frames `8-11`
+  - `speaking`: frames `12-15`
+- Rendered the avatar compactly in the child-facing header in `avatar-version/web/src/screens/live/ChildLiveScreen.tsx`.
+- Configured avatar-version frontend to call backend port `8020`.
+- Updated avatar-version backend CORS to allow `http://localhost:5174` and `http://127.0.0.1:5174`.
+- Confirmed the avatar-version frontend builds successfully after installing frontend dependencies in the copied folder.
+
+### Environment conventions
+- `normal` means start the standalone parent project:
+  - frontend `5173`
+  - backend `8010`
+- `avatar-version` means start the isolated avatar-version project:
+  - frontend `5174`
+  - backend `8020`
+
+## Session 2026-04-18
+
+### Work completed
+- Improved prompt instructions so `Conversation` and `Story Teller` both use more child-friendly conversational language.
+- Tuned Marathi and Hindi handling so replies are more likely to stay in the child’s spoken language.
+- Added a dedicated `prompt-feedback.md` file in the repo root to capture prompt-quality issues and prompt rewrites from this project.
+- Created two reusable Codex skills for future sessions:
+  - `prompt-feedback`
+  - `changelog-updater`
+
+### Issues detected
+- Marathi conversation responses could sound translated and stiff instead of natural and child-facing.
+- `Story Teller` sometimes asked the child to provide the transcript again even though the spoken request was already available.
+- `Story Teller` could fall through to a generic fallback instead of telling a story.
+- Conversation language matching was inconsistent in some fallback paths.
+
+### Files referenced
+- `backend/app/services/prompt_builders.py`
+- `backend/app/services/live_ws.py`
+- `backend/runtime_logs/voice_turns.jsonl`
+- `prompt-feedback.md`
+- `changelog.md`
+
+### Changes implemented
+- Added prompt guidance requiring child-friendly conversational language in both `Conversation` and `Story Teller`.
+- Added spoken-language guidance for Marathi and Hindi so responses should sound like a warm caregiver rather than a literal translation.
+- Added Marathi examples directly into the conversation prompt to anchor the desired tone.
+- Updated Marathi conversation fallback replies to use more natural phrases such as `मला अजून सांग ना` and `मग काय झालं?`
+- Added Story Teller prompt guidance that explicitly forbids asking for the transcript and treats the spoken request as the source of truth.
+- Added a project-level `prompt-feedback.md` file with concrete transcript examples, sub-optimal outputs, and prompt fixes applied in this repo.
+- Created reusable global skills:
+  - `/Users/jk/.codex/skills/prompt-feedback/SKILL.md`
+  - `/Users/jk/.codex/skills/changelog-updater/SKILL.md`
+
+### Rolled back
+- Reverted the push-to-talk button component to its last committed state after an attempted interaction tweak made the behavior worse.
+
 ## Standalone repo follow-up fixes
 
 ### Softer Conversation behavior

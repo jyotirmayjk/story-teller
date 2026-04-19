@@ -23,6 +23,7 @@
   body,
   #root {
     min-height: 100%;
+    overflow-x: hidden;
   }
 
   body {
@@ -34,6 +35,8 @@
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   button,

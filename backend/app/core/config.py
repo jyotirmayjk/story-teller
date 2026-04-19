@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     SARVAM_API_KEY: str = ""
     SARVAM_CHAT_MODEL: str = "sarvam-30b"
     SARVAM_STT_MODEL: str = "saaras:v3"
-    SARVAM_STT_MODE: str = "translate"
+    SARVAM_STT_MODE: str = "transcribe"
     SARVAM_STT_LANGUAGE: str = "unknown"
     SARVAM_TTS_MODEL: str = "bulbul:v3"
     SARVAM_TTS_LANGUAGE: str = "mr-IN"
