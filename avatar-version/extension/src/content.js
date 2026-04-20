@@ -11,6 +11,15 @@
   const COLUMNS = 4;
   const FPS = 6;
   const SPRITE_SRC = chrome.runtime.getURL('assets/duck-avatar-sprite.png');
+  const MODE_STORAGE_KEY = 'storyCompanionDuckMode';
+  const MODE_LABELS = {
+    conversation: 'Talk',
+    story_teller: 'Story',
+  };
+  const MODE_PLACEHOLDERS = {
+    conversation: 'Tap the duck to talk',
+    story_teller: 'Tap the duck and ask for a story',
+  };
 
   const animationFrames = {
     idle: [0, 1, 2, 3],
@@ -29,14 +38,22 @@
     audioContext: null,
     source: null,
     processor: null,
-    audioQueue: [],
+    ttsChunks: [],
     audioPlaying: false,
+    currentAudio: null,
+    currentAudioUrl: null,
+    mode: 'conversation',
   };
 
   const root = document.createElement('div');
   root.id = 'story-companion-duck-root';
   root.innerHTML = `
     <div id="story-companion-duck-bubble">Tap the duck to talk</div>
+    <div id="story-companion-duck-mode-toggle" role="group" aria-label="Choose assistant mode">
+      <button type="button" data-mode="conversation" aria-pressed="true">Talk</button>
+      <button type="button" data-mode="story_teller" aria-pressed="false">Story</button>
+    </div>
+    <button id="story-companion-duck-reset" type="button">Reset audio</button>
     <button id="story-companion-duck-button" type="button" aria-label="Tap the duck to talk" data-state="idle">
       <canvas id="story-companion-duck-canvas" width="128" height="128"></canvas>
     </button>
@@ -44,6 +61,8 @@
   document.documentElement.appendChild(root);
 
   const bubble = root.querySelector('#story-companion-duck-bubble');
+  const modeToggle = root.querySelector('#story-companion-duck-mode-toggle');
+  const resetButton = root.querySelector('#story-companion-duck-reset');
   const button = root.querySelector('#story-companion-duck-button');
   const canvas = root.querySelector('#story-companion-duck-canvas');
   const ctx = canvas.getContext('2d');
@@ -51,7 +70,7 @@
   sprite.src = SPRITE_SRC;
 
   function setBubble(text) {
-    bubble.textContent = text || 'Tap the duck to talk';
+    bubble.textContent = text || getModePlaceholder();
   }
 
   function setStatus(nextStatus) {
@@ -60,12 +79,87 @@
     button.setAttribute('aria-label', `Duck avatar ${nextStatus}`);
   }
 
+  function getModePlaceholder() {
+    return MODE_PLACEHOLDERS[state.mode] || MODE_PLACEHOLDERS.conversation;
+  }
+
+  function updateModeUi() {
+    modeToggle.querySelectorAll('button[data-mode]').forEach((modeButton) => {
+      const isActive = modeButton.dataset.mode === state.mode;
+      modeButton.setAttribute('aria-pressed', String(isActive));
+      modeButton.dataset.active = String(isActive);
+    });
+    if (!state.isRecording && state.status === 'idle') {
+      setBubble(getModePlaceholder());
+    }
+  }
+
+  function sendSessionModeUpdate() {
+    if (state.socket?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    state.socket.send(JSON.stringify({
+      type: 'session.update',
+      data: {
+        active_mode: state.mode,
+        voice_style: 'friendly_cartoon',
+      },
+    }));
+  }
+
+  function saveMode(mode) {
+    if (!chrome.storage?.local) {
+      return;
+    }
+    chrome.storage.local.set({ [MODE_STORAGE_KEY]: mode });
+  }
+
+  function loadStoredMode() {
+    return new Promise((resolve) => {
+      if (!chrome.storage?.local) {
+        resolve();
+        return;
+      }
+      chrome.storage.local.get(MODE_STORAGE_KEY, (items) => {
+        const storedMode = items?.[MODE_STORAGE_KEY];
+        if (storedMode === 'conversation' || storedMode === 'story_teller') {
+          state.mode = storedMode;
+        }
+        resolve();
+      });
+    });
+  }
+
+  function setMode(nextMode) {
+    if (nextMode !== 'conversation' && nextMode !== 'story_teller') {
+      return;
+    }
+    if (state.isRecording || state.status === 'processing' || state.status === 'speaking') {
+      setBubble('Finish this turn before switching modes.');
+      return;
+    }
+    state.mode = nextMode;
+    saveMode(nextMode);
+    updateModeUi();
+    sendSessionModeUpdate();
+    setBubble(`${MODE_LABELS[nextMode]} mode is ready.`);
+  }
+
   function bytesToBase64(bytes) {
     let binary = '';
     for (let i = 0; i < bytes.byteLength; i += 1) {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
+  }
+
+  function decodeBase64(base64) {
+    const raw = atob(base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) {
+      bytes[index] = raw.charCodeAt(index);
+    }
+    return bytes;
   }
 
   function floatTo16BitPCM(float32Array) {
@@ -127,7 +221,7 @@
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        active_mode: 'conversation',
+        active_mode: state.mode,
         voice_style: 'friendly_cartoon',
       }),
     });
@@ -142,13 +236,7 @@
       state.socket = socket;
 
       socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({
-          type: 'session.update',
-          data: {
-            active_mode: 'conversation',
-            voice_style: 'friendly_cartoon',
-          },
-        }));
+        sendSessionModeUpdate();
         resolve();
       });
 
@@ -177,7 +265,7 @@
     await login();
     await startSession();
     await connectSocket();
-    setBubble('Tap the duck to talk');
+    setBubble(getModePlaceholder());
   }
 
   function sendAudioChunk(audio) {
@@ -251,6 +339,39 @@
     state.socket?.send(JSON.stringify({ type: 'audio.flush' }));
   }
 
+  async function resetAudio() {
+    state.ttsChunks = [];
+    state.responseBuffer = '';
+
+    if (state.currentAudio) {
+      state.currentAudio.pause();
+      state.currentAudio.removeAttribute('src');
+      state.currentAudio.load();
+      state.currentAudio = null;
+    }
+    if (state.currentAudioUrl) {
+      URL.revokeObjectURL(state.currentAudioUrl);
+      state.currentAudioUrl = null;
+    }
+
+    state.processor?.disconnect();
+    state.source?.disconnect();
+    state.stream?.getTracks().forEach((track) => track.stop());
+    if (state.audioContext) {
+      await state.audioContext.close().catch(() => undefined);
+    }
+
+    state.stream = null;
+    state.audioContext = null;
+    state.source = null;
+    state.processor = null;
+    state.isRecording = false;
+    state.audioPlaying = false;
+
+    setStatus('idle');
+    setBubble('Audio reset. Tap the duck when ready.');
+  }
+
   function handleSocketMessage(rawMessage) {
     let message;
     try {
@@ -269,6 +390,7 @@
     if (message.type === 'transcript.final') {
       setBubble(data.text || 'I heard you.');
       state.responseBuffer = '';
+      state.ttsChunks = [];
       return;
     }
 
@@ -286,14 +408,12 @@
 
     if (message.type === 'tts.chunk' && data.audio) {
       setStatus('speaking');
-      queueAudio(data.audio, data.codec || 'mp3');
+      state.ttsChunks.push(decodeBase64(data.audio));
       return;
     }
 
     if (message.type === 'tts.completed') {
-      if (!state.audioPlaying) {
-        setStatus('idle');
-      }
+      void playTtsAudio(data.codec || 'mp3');
       return;
     }
 
@@ -303,35 +423,51 @@
     }
   }
 
-  function queueAudio(audioBase64, codec) {
-    state.audioQueue.push({ audioBase64, codec });
-    if (!state.audioPlaying) {
-      void playNextAudio();
-    }
-  }
-
-  async function playNextAudio() {
-    const item = state.audioQueue.shift();
-    if (!item) {
+  async function playTtsAudio(codec) {
+    if (!state.ttsChunks.length) {
       state.audioPlaying = false;
       setStatus('idle');
       return;
     }
 
+    const blobParts = state.ttsChunks.map((chunk) => {
+      const copy = new Uint8Array(chunk.byteLength);
+      copy.set(chunk);
+      return copy;
+    });
+    state.ttsChunks = [];
+
+    const blob = new Blob(blobParts, { type: `audio/${codec}` });
+    const url = URL.createObjectURL(blob);
+
+    if (state.currentAudio) {
+      state.currentAudio.pause();
+    }
+    if (state.currentAudioUrl) {
+      URL.revokeObjectURL(state.currentAudioUrl);
+    }
+
     state.audioPlaying = true;
-    const audio = new Audio(`data:audio/${item.codec};base64,${item.audioBase64}`);
+    const audio = new Audio(url);
+    state.currentAudio = audio;
+    state.currentAudioUrl = url;
+
     audio.addEventListener('ended', () => {
-      void playNextAudio();
+      state.audioPlaying = false;
+      setStatus('idle');
     }, { once: true });
     audio.addEventListener('error', () => {
-      void playNextAudio();
+      state.audioPlaying = false;
+      setStatus('idle');
+      setBubble('I could not play the audio, but I heard the reply.');
     }, { once: true });
 
     try {
       await audio.play();
-    } catch {
+    } catch (error) {
       state.audioPlaying = false;
       setStatus('idle');
+      setBubble(error instanceof Error ? error.message : 'Audio playback was blocked.');
     }
   }
 
@@ -341,6 +477,22 @@
     } else {
       void startRecording();
     }
+  });
+
+  modeToggle.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const modeButton = target.closest('button[data-mode]');
+    if (!modeButton) {
+      return;
+    }
+    setMode(modeButton.dataset.mode);
+  });
+
+  resetButton.addEventListener('click', () => {
+    void resetAudio();
   });
 
   let animationIndex = 0;
@@ -364,5 +516,8 @@
     requestAnimationFrame(drawAvatar);
   }
 
-  requestAnimationFrame(drawAvatar);
+  void loadStoredMode().then(() => {
+    updateModeUi();
+    requestAnimationFrame(drawAvatar);
+  });
 })();

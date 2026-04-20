@@ -72,6 +72,15 @@ The extension will reuse the existing web app strategy:
 
 This keeps the backend and Sarvam STT flow unchanged.
 
+For TTS playback, the extension should mirror the React web app:
+
+- collect each `tts.chunk` as decoded bytes
+- wait for `tts.completed`
+- create one `Blob` with the final codec
+- play the object URL with `new Audio(url)`
+
+This avoids trying to play partial MP3 chunks as standalone audio files.
+
 ## Onboarding Strategy
 
 The extension should bypass onboarding entirely.
@@ -128,6 +137,80 @@ The floating text bubble should show:
 - while LLM response arrives: response text
 - during speaking: final assistant response
 - on error: short error message
+
+## Reset Audio Control
+
+Add a small secondary `Reset audio` button near the mode toggle.
+
+It should:
+
+- stop any currently playing TTS audio
+- clear queued TTS chunks
+- stop any active microphone stream
+- close the active `AudioContext`
+- clear the in-progress assistant response buffer
+- return the avatar to `idle`
+
+It should not:
+
+- delete the backend session
+- clear the selected mode
+- hide the duck
+- reload the page
+
+## Mode Toggle Plan
+
+The extension should support both assistant modes without adding onboarding or the full React app UI.
+
+### UI
+
+Add a compact segmented control near the duck:
+
+- `Talk`
+- `Story`
+
+The control should stay visually secondary to the duck. The duck remains the primary interaction target for recording audio.
+
+### Behavior
+
+- `Talk` maps to backend mode `conversation`.
+- `Story` maps to backend mode `story_teller`.
+- The selected mode should persist with `chrome.storage.local`.
+- The initial default remains `conversation`.
+- Changing mode while idle should immediately send a websocket `session.update` event if the socket is already connected.
+- Changing mode while recording should be ignored until the current recording finishes, to avoid sending one utterance to two modes.
+- The text bubble should update by mode:
+  - `conversation`: `Tap the duck to talk`
+  - `story_teller`: `Tap the duck and ask for a story`
+
+### Backend Integration
+
+Use the same backend routes and websocket transport:
+
+- `POST /auth/login`
+- `POST /app/session/start`
+- `GET /app/live/ws?token=<token>`
+- websocket `session.update`
+
+When starting a session, use the current extension mode:
+
+```json
+{
+  "active_mode": "conversation",
+  "voice_style": "friendly_cartoon"
+}
+```
+
+or:
+
+```json
+{
+  "active_mode": "story_teller",
+  "voice_style": "friendly_cartoon"
+}
+```
+
+No onboarding screen is needed because the extension still creates a temporary local backend session as `Browser Avatar`.
 
 ## Known Risks
 
