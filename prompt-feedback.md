@@ -1,5 +1,15 @@
 # Prompt Feedback
 
+## Session 2026-04-21
+
+### Issue: Avatar extension replied in Marathi after English speech
+- Transcript / input: `I went to school today.`
+- Observed output: `तू आज शाळेत गेलास! तिथे काय केलंस?`
+- Why it was sub-optimal: STT correctly detected `en-IN` and produced an English transcript, but the avatar backend LLM replied in Marathi and TTS was also routed with `target_language_code: mr-IN`. This made the extension feel like it ignored the child’s spoken language.
+- Detected by: user
+- Changes made: Updated `avatar-version/backend/app/services/prompt_builders.py` to add explicit language instructions, including `Reply only in simple English. Do not reply in Marathi or Hindi.` when STT detects `en-IN`. Updated `avatar-version/backend/app/services/live_ws.py` so Story Teller also receives the detected language code and TTS target language resolves dynamically for `en-IN`, `hi-IN`, and `mr-IN` instead of always using Marathi.
+- Status: fixed
+
 ## Session 2026-04-18
 
 ### Issue: Marathi conversation sounded translated instead of spoken
