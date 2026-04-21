@@ -1,5 +1,8 @@
 # Story Teller
-
+Story Teller exists first as a small avatar companion: a floating duck that listens, responds, and gently changes state as the child talks.
+The child does not need to navigate controls; they can tap the duck, speak naturally, see what was heard, and hear a warm voice reply.
+Behind the avatar, the system supports grounded conversation, object-led storytelling, transcript history, and language-aware speech for a safer child-facing experience.
+It also includes a screen-based interface with Conversation, Story Teller, and Settings for families who want a more traditional app view and parent-facing oversight.
 ## Demo
 Story Mode in English
 
@@ -7,20 +10,22 @@ https://github.com/user-attachments/assets/192c3ab3-5775-4544-958f-7c204839c61c
 
 
 
+Story Mode in Marathi
+
+https://github.com/user-attachments/assets/a91a8591-0e1a-4792-a7a0-08d0c7aaaae1
+
 This project has the following features:
 
-- Normal app: three-screen child-facing experience
+- Normal app: three-screen user experience
+- Avatar version: duck overlay and Chrome extension flow
 - Conversation mode: 2-3 turn grounded exchange
 - Story Teller mode: object-led story from speech
-- Avatar version: duck overlay and Chrome extension flow
 - Parent/settings view: transcript history and controls
 - Multi-lingual support:Auto detects input language and sets the output language dynamically to match input
 
 The sections below are intended to sit directly under the demo once that link or thumbnail is added.
 
 ## Vision
-
-Story Teller is a browser-first voice companion for young children built around a calm, simple interaction loop. Instead of presenting a dashboard full of controls, the app reduces the experience to a few child-readable surfaces: `Conversation` for grounded back-and-forth speaking practice, `Story Teller` for object-led storytelling, and `Settings` for parent-facing oversight. The goal is to make spoken interaction feel safe, focused, and inviting for a 2-4 year old without exposing technical complexity on the main screens.
 
 At a higher level, this project is trying to turn voice AI into a gentle developmental tool rather than a noisy novelty. `Conversation` is designed to encourage 2-3 turn mini-conversations that help the child keep describing the same thing with a little more detail. `Story Teller` turns a child’s natural prompt into a short descriptive response and story without requiring structured input. The long-term vision is a trustworthy conversational companion that feels warm and responsive for the child while giving parents a clean record of what was said and how the system responded.
 
