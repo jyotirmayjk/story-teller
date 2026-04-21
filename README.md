@@ -6,12 +6,10 @@ Add your video walkthrough link, embedded GitHub asset, or clickable thumbnail h
 
 Example:
 
-```md
-[![Watch the demo]
 https://github.com/user-attachments/assets/192c3ab3-5775-4544-958f-7c204839c61c
-```
+Story Mode in English
 
-Suggested walkthrough sections:
+This project has the following features:
 
 - Normal app: three-screen child-facing experience
 - Conversation mode: 2-3 turn grounded exchange
