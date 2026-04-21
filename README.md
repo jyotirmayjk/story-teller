@@ -7,6 +7,7 @@ Add your video walkthrough link, embedded GitHub asset, or clickable thumbnail h
 Example:
 
 https://github.com/user-attachments/assets/192c3ab3-5775-4544-958f-7c204839c61c
+
 Story Mode in English
 
 This project has the following features:
