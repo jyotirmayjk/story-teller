@@ -17,6 +17,7 @@ This project has the following features:
 - Story Teller mode: object-led story from speech
 - Avatar version: duck overlay and Chrome extension flow
 - Parent/settings view: transcript history and controls
+- Multi-lingual support:Auto detects input language and sets the output language dynamically to match input
 
 The sections below are intended to sit directly under the demo once that link or thumbnail is added.
 
