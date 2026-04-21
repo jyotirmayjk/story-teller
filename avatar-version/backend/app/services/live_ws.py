@@ -210,7 +210,7 @@ class LiveWebSocketSession:
             self._reset_conversation_thread()
 
         system_prompt = (
-            build_story_teller_prompt(self.session)
+            build_story_teller_prompt(self.session, child_language_code=self.last_language_code)
             if self.session.active_mode == AppMode.story_teller
             else build_conversational_companion_prompt(
                 self.session,
@@ -257,7 +257,7 @@ class LiveWebSocketSession:
             self._record_conversation_turn(transcript, reply_text)
 
         speaker = "roopa" if self.session.voice_style and str(self.session.voice_style) == "story_narrator" else "shruti"
-        target_language_code = settings.SARVAM_TTS_LANGUAGE
+        target_language_code = self._resolve_tts_language_code()
         tts_audio_parts: List[bytes] = []
         tts_codec = "mp3"
         async for event in sarvam_streaming_service.stream_tts(
@@ -420,6 +420,11 @@ class LiveWebSocketSession:
         if not reply_text.strip():
             return False
         return DEVANAGARI_RE.search(reply_text) is None
+
+    def _resolve_tts_language_code(self) -> str:
+        if self.last_language_code in {"en-IN", "hi-IN", "mr-IN"}:
+            return self.last_language_code
+        return settings.SARVAM_TTS_LANGUAGE
 
     def _extract_topic_anchor(self, transcript: str) -> Optional[str]:
         topic_words = list(self._tokenize_topic_words(transcript))

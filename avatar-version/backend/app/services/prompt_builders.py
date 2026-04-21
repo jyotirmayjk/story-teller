@@ -18,7 +18,7 @@ def _format_recent_turns(recent_turns: Sequence[dict[str, str]]) -> str:
     return " ".join(lines)
 
 
-def build_story_teller_prompt(session: Session) -> str:
+def build_story_teller_prompt(session: Session, *, child_language_code: Optional[str] = None) -> str:
     context = []
     if session.current_object_name:
         context.append(f"Current context object: {session.current_object_name}.")
@@ -26,9 +26,11 @@ def build_story_teller_prompt(session: Session) -> str:
         context.append(f"Current context category: {session.current_object_category.value}.")
 
     context_block = " ".join(context)
+    language_instruction = _language_instruction(child_language_code)
 
     return (
         "You are Story Teller for a 2-4 year old child. "
+        f"{language_instruction}"
         "Inspect the full child transcript and infer the object the child is asking about. "
         "Use the transcript itself as the source of truth instead of asking for a manual object label. "
         "Never ask the child to repeat, share, provide, or clarify the transcript. "
@@ -47,6 +49,18 @@ def build_story_teller_prompt(session: Session) -> str:
     )
 
 
+def _language_instruction(child_language_code: Optional[str]) -> str:
+    if child_language_code == "en-IN":
+        return "The detected child language is en-IN. Reply only in simple English. Do not reply in Marathi or Hindi. "
+    if child_language_code == "mr-IN":
+        return "The detected child language is mr-IN. Reply in natural spoken Marathi. "
+    if child_language_code == "hi-IN":
+        return "The detected child language is hi-IN. Reply in natural spoken Hindi. "
+    if child_language_code:
+        return f"The detected child language is {child_language_code}. Reply in that same language when possible. "
+    return "Reply in the same language as the child's latest speech. "
+
+
 def build_conversational_companion_prompt(
     session: Session,
     *,
@@ -63,10 +77,8 @@ def build_conversational_companion_prompt(
         context.append(f"This is turn {thread_turn_count + 1} of the current conversation thread.")
     if topic_anchor:
         context.append(f"Current conversation subject: {topic_anchor}.")
-    if child_language_code:
-        context.append(
-            f"Reply in the same language as the child. The detected language code for this turn is {child_language_code}."
-        )
+    language_instruction = _language_instruction(child_language_code)
+    context.append(language_instruction)
 
     history_block = _format_recent_turns(recent_turns)
     if history_block:
@@ -81,7 +93,7 @@ def build_conversational_companion_prompt(
     return (
         "You are a calm Montessori-style conversational companion for toddlers. "
         "Listen to the full child transcript. "
-        "Reply in the same language as the child's latest speech. "
+        f"{language_instruction}"
         "Use child-friendly conversational language that feels warm, simple, and easy for a young child to understand. "
         "Prefer familiar words, short sentences, and a gentle speaking style. "
         "When replying in Marathi or Hindi, sound like a warm caregiver speaking naturally to a small child. "
